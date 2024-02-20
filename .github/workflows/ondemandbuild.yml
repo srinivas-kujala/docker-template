@@ -1,0 +1,43 @@
+name: On Demand Build
+
+on:
+    workflow_dispatch:
+        inputs:
+            branch-name:  # id of input
+                type: string
+                description: 'Name of the repository branch. Ex: feature/PROTECT-12345_Title-Of-Ticket'
+                required: true
+                default: main
+            deploy:  # id of input
+                type: choice
+                description: 'Please select either of the options. Develop is for dev env. Main is for release'
+                default: 'develop'
+                options:
+                    - develop
+                    - main
+
+concurrency:
+    group: ${{ github.workflow }}-${{ inputs.branch-name }}
+    cancel-in-progress: true
+    
+jobs:
+
+    publish:
+        uses: srinivas-kujala/.github/workflows/publish-docker-image.yml@main
+        with:
+            branch-name: ${{ inputs.branch-name }}
+            image-name: ${{ VARS.IMAGE_NAME }}
+            image-path: ${{ VARS.IMAGE_PATH }}
+            project-path:  ${{ vars.PROJECT_PATH }}
+            nuget-path:  'src\NuGet.config'
+        secrets:
+            jfrog-password: ${{ secrets.JFROG_PASSWORD }}
+            acr-password: ${{ secrets.ACR_PASSWORD }}
+
+    update-helm:
+        needs: publish
+        uses: srinivas-kujala/.github/workflows/update-helm-charts.yml@main
+        with:
+            environment: ${{ VARS.ENVIRONMENT }}
+            tag-value: ${{ needs.publish.outputs.version }}
+            application-value-path: 'application\values_${{ inputs.deploy }}.yaml'
